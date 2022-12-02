@@ -28,7 +28,7 @@ config_default = {
 	"default": {
 		"withdraw": 45,  # 撤回时间，单位秒
 		"lolicon": True,  # lolicon模块开关
-		"lolicon_r18": False,  # lolicon_r18模块开关
+		"lolicon_r18": True,  # lolicon_r18模块开关
 		"acggov": False  # acggov模块开关
 	},
 	"lolicon": {
