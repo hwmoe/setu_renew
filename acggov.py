@@ -359,7 +359,7 @@ async def search_setu_online(keyword, num):
             if get_config('acggov', 'pixiv_direct'):
                 image['data'] = await download_pixiv_image(url, image['id'])
             else:
-                url = url.replace("https://i.pximg.net", "https://i.pixiv.cat")
+                url = url.replace("https://i.pximg.net", "https://i.acgmx.com")
                 image['data'] = download_acggov_image(url)
             image['native'] = False
             if image['data']:
