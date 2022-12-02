@@ -198,33 +198,36 @@ async def get_setu_online(num, r18=0, keyword=None):
 
 
 def get_setu_native(r18=0, uid=0):
-	image = generate_image_struct()
-	
-	path = f'setu_mix/lolicon'
-	if r18 == 1:
-		path = f'setu_mix/lolicon_r18'
-	elif r18 == 2:
-		if random.randint(1, 100) > 50:
-			path = f'setu_mix/lolicon_r18'
-	res = R.img(path)
-	if not os.path.exists(res.path):
-		return image
-	
-	if uid == 0:
-		fn = random.choice(os.listdir(res.path))
-		if fn.split('.')[0].isdigit():
-			uid = int(fn.split('.')[0])
-	
-	if not uid:
-		return image
-	
-	image['id'] = int(uid)
-	image['native'] = True
-	
-	path += f'/{uid}'
-	res = R.img(path)
 	try:
+		image = generate_image_struct()
+
+		path = f'setu_mix/lolicon'
+		if r18 == 1:
+			path = f'setu_mix/lolicon_r18'
+		elif r18 == 2:
+			if random.randint(1, 100) > 50:
+				path = f'setu_mix/lolicon_r18'
+		res = R.img(path)
+
+		if not os.path.exists(res.path):
+			return None
+
+		if uid == 0:
+			return None
+
+		if not uid:
+			return None
+
+		image['id'] = int(uid)
+		image['native'] = True
+
+		path += f'/{uid}'
+		res = R.img(path)
 		image['data'] = res.path + '.jpg'
+
+		if not os.path.exists(res.path + '.jpg'):
+			return None
+
 		with open(res.path + '.json', encoding='utf8') as f:
 			d = json.load(f)
 			if 'title' in d:

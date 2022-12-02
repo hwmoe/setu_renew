@@ -1,19 +1,16 @@
-import asyncio
 import datetime
 import io
 import json
 import os
 import random
-import sys
 import traceback
 
-import httpx
+import requests
 from PIL import Image
 
 import hoshino
 from hoshino import R
 from .config import get_config
-
 
 ranking_list = {}
 
@@ -66,7 +63,7 @@ def generate_image_struct():
 
 
 # 读取排行榜
-async def query_ranking(date: str, page: int) -> dict:
+def query_ranking(date: str, page: int, mode: str = 'daily') -> dict:
     if date not in ranking_list:
         ranking_list[date] = {}
     if page in ranking_list[date]:
@@ -74,17 +71,17 @@ async def query_ranking(date: str, page: int) -> dict:
     url = f'https://api.acgmx.com/public/ranking'
     params = {
         'ranking_type': 'illust',
-        'mode': get_config('acggov', 'ranking_mode'),
+        'mode': mode or get_config('acggov', 'ranking_mode'),
         'date': date,
         'per_page': get_config('acggov', 'per_page'),
         'page': page + 1,
     }
     data = {}
     try:
-        async with httpx.AsyncClient(headers=acggov_headers) as session:
-            async with session.get(url, params=params, proxy=get_config('acggov', 'acggov_proxy'), ssl=False) as resp:
-                data = await resp.json(content_type='application/json')
-                ranking_list[date][page] = data
+        proxy = get_config('acggov', 'acggov_proxy')
+        resp = requests.get(url=url, params=params, headers=acggov_headers, proxies=proxy)
+        data = resp.json()
+        ranking_list[date][page] = data
     except:
         traceback.print_exc()
     return data
@@ -95,10 +92,9 @@ async def query_setu():
     data = {}
     image = generate_image_struct()
     try:
-        async with httpx.AsyncClient(headers=acggov_headers) as session:
-            async with session.get('https://api.acgmx.com/public/setu',
-                                   proxy=get_config('acggov', 'acggov_proxy'), ssl=False) as resp:
-                data = await resp.json(content_type='application/json')
+        resp = requests.get('https://api.acgmx.com/public/setu', proxies=get_config('acggov', 'acggov_proxy'),
+                            headers=acggov_headers)
+        data = resp.json()
     except Exception:
         traceback.print_exc()
         image['title'] = '无法访问api'
@@ -132,9 +128,8 @@ async def query_search(keyword):
         'offset': 0,
     }
     try:
-        async with httpx.AsyncClient(headers=acggov_headers) as session:
-            async with session.get(url, params=params, proxy=get_config('acggov', 'acggov_proxy'), ssl=False) as resp:
-                data = await resp.json(content_type='application/json')
+        resp = requests.get(url, params=params, proxies=get_config('acggov', 'acggov_proxy'), headers=acggov_headers)
+        data = resp.json()
     except Exception:
         traceback.print_exc()
         image['title'] = '无法访问api'
@@ -175,12 +170,14 @@ async def query_ranking_setu(number: int) -> dict:
     number = number % get_config('acggov', 'per_page')
     date = (datetime.datetime.now() +
             datetime.timedelta(days=-2)).strftime("%Y-%m-%d")
-    data = await query_ranking(date, page)
-    if not 'response' in data:
+    data = query_ranking(date, page, 'weekly_r18')
+
+    if not 'illusts' in data:
         image['title'] = '排行榜数据获取失败'
         return image
 
     illust = data['illusts'][number]['id']
+
     image['title'] = data['illusts'][number]['title']
     image['author'] = data['illusts'][number]['user']['name']
     for tag in data['illusts'][number]['tags']:
@@ -190,28 +187,24 @@ async def query_ranking_setu(number: int) -> dict:
         image['url'] = data['illusts'][number]['image_urls']['large']
     else:
         data = {}
-        url = 'https://api.acgmx.com/illusts/detail'
-        params = {
-            'illustId': illust,
-            'reduction': 'true',
-        }
         try:
-            async with httpx.AsyncClient(headers=acggov_headers) as session:
-                async with session.get(url, params=params, proxy=get_config('acggov', 'acggov_proxy'), ssl=False) as resp:
-                    data = await resp.json(content_type='application/json')
+            data = get_details(illust)
         except Exception as _:
             traceback.print_exc()
             image['title'] = 'detail获取失败'
             return image
-        if 'illusts' not in data:
+        if 'data' not in data:
             image['title'] = 'detail数据异常'
             return image
-        data = data['illusts']
-        page_count = data[number]['page_count']
+        if 'illust' not in data['data']:
+            image['title'] = 'detail数据异常'
+            return image
+        data = data['data']['illust']
+        page_count = data['page_count']
         if page_count == 1:
-            image['url'] = data[number]['meta_single_page']['original_image_url']
+            image['url'] = data['meta_single_page']['original_image_url']
         else:
-            meta_pages = data[number]['meta_pages']
+            meta_pages = data['meta_pages']
             num = random.randint(0, len(meta_pages) - 1)
             image['url'] = meta_pages[num]['image_urls']['original']
 
@@ -219,20 +212,35 @@ async def query_ranking_setu(number: int) -> dict:
     return image
 
 
-async def download_acggov_image(url: str):
+def get_details(ids: int):
+    data = {}
+    url = 'https://api.acgmx.com/illusts/detail'
+    params = {
+        'illustId': ids,
+        'reduction': True,
+    }
+    try:
+        resp = requests.get(url, params=params, proxies=get_config('acggov', 'acggov_proxy'),
+                            headers=acggov_headers)
+        data = resp.json()
+    except Exception as _:
+        traceback.print_exc()
+    return data
+
+
+def download_acggov_image(url: str):
     hoshino.logger.info(f'[INFO]acggov downloading image {url}')
     try:
-        async with httpx.AsyncClient(headers=acggov_headers) as session:
-            async with session.get(url, proxy=get_config('acggov', 'acggov_proxy'), ssl=False) as resp:
-                data = await resp.read()
-                # 转jpg
-                byte_stream = io.BytesIO(data)
-                roiImg = Image.open(byte_stream)
-                if roiImg.mode != 'RGB':
-                    roiImg = roiImg.convert('RGB')
-                imgByteArr = io.BytesIO()
-                roiImg.save(imgByteArr, format='JPEG')
-                return imgByteArr.getvalue()
+        resp = requests.get(url, proxies=get_config('acggov', 'acggov_proxy'), headers=acggov_headers)
+        data = resp.content
+        # 转jpg
+        byte_stream = io.BytesIO(data)
+        roiImg = Image.open(byte_stream)
+        if roiImg.mode != 'RGB':
+            roiImg = roiImg.convert('RGB')
+        imgByteArr = io.BytesIO()
+        roiImg.save(imgByteArr, format='JPEG')
+        return imgByteArr.getvalue()
     except Exception as e:
         hoshino.logger.error(
             '[ERROR]download image {} failed,error {}'.format(url, e))
@@ -246,17 +254,16 @@ async def download_pixiv_image(url: str, id):
         'referer': f'https://www.pixiv.net/member_illust.php?mode=medium&illust_id={id}'
     }
     try:
-        async with httpx.AsyncClient(headers=headers) as session:
-            async with session.get(url, proxy=get_config('acggov', 'pixiv_proxy'), ssl=False) as resp:
-                data = await resp.read()
-                # 转jpg
-                byte_stream = io.BytesIO(data)
-                roiImg = Image.open(byte_stream)
-                if roiImg.mode != 'RGB':
-                    roiImg = roiImg.convert('RGB')
-                imgByteArr = io.BytesIO()
-                roiImg.save(imgByteArr, format='JPEG')
-                return imgByteArr.getvalue()
+        resp = requests.get(url, proxies=get_config('acggov', 'pixiv_proxy'), headers=headers)
+        data = resp.content
+        # 转jpg
+        byte_stream = io.BytesIO(data)
+        roiImg = Image.open(byte_stream)
+        if roiImg.mode != 'RGB':
+            roiImg = roiImg.convert('RGB')
+        imgByteArr = io.BytesIO()
+        roiImg.save(imgByteArr, format='JPEG')
+        return imgByteArr.getvalue()
     except Exception as e:
         hoshino.logger.error(
             '[ERROR]download image {} failed,error {}'.format(url, e))
@@ -291,7 +298,7 @@ async def get_setu_online():
         image['data'] = res.path
         image['native'] = True
     else:
-        image['data'] = await download_acggov_image(image['url'])
+        image['data'] = download_acggov_image(image['url'])
         image['native'] = False
         if not image['data']:
             image['id'] = 0
@@ -303,27 +310,27 @@ async def get_setu_online():
     return image
 
 
-def get_setu_native(uid=0):
+def acggov_get_setu_native(uid: int | str):
     image = generate_image_struct()
 
     path = f'setu_mix/acggov'
     res = R.img(path)
     if not os.path.exists(res.path):
-        return image
+        return None
 
     if uid == 0:
-        fn = random.choice(os.listdir(res.path))
-        if fn.split('.')[0].isdigit():
-            uid = int(fn.split('.')[0])
+        return None
 
     if not uid:
-        return image
+        return None
 
     image['id'] = int(uid)
     image['native'] = True
 
     path = f'setu_mix/acggov/{uid}'
     res = R.img(path)
+    if not os.path.exists(res.path + '.jpg'):
+        return None
     try:
         image['data'] = res.path + '.jpg'
         with open(res.path + '.json', encoding='utf8') as f:
@@ -353,7 +360,7 @@ async def search_setu_online(keyword, num):
                 image['data'] = await download_pixiv_image(url, image['id'])
             else:
                 url = url.replace("https://i.pximg.net", "https://i.pixiv.cat")
-                image['data'] = await download_acggov_image(url)
+                image['data'] = download_acggov_image(url)
             image['native'] = False
             if image['data']:
                 if get_config('acggov', 'mode') == 2:
@@ -377,7 +384,7 @@ def search_setu_native(keyword, num):
         result_list = random.sample(result_list, num)
     image_list = []
     for result in result_list:
-        image = get_setu_native(result)
+        image = acggov_get_setu_native(result)
         if image['data']:
             image_list.append(image)
     return image_list
@@ -385,7 +392,7 @@ def search_setu_native(keyword, num):
 
 async def acggov_get_setu():
     if get_config('acggov', 'mode') >= 2:
-        return get_setu_native()
+        return acggov_get_setu_native()
     elif get_config('acggov', 'mode') == 1:
         return await get_setu_online()
     else:
@@ -402,29 +409,31 @@ async def acggov_search_setu(keyword, num):
 
 
 # 获取排行榜
-async def acggov_get_ranking(page: int = 0) -> str:
+async def acggov_get_ranking(page: int = 1) -> str:
     date = (datetime.datetime.now() +
             datetime.timedelta(days=-2)).strftime("%Y-%m-%d")
-    data = await query_ranking(date, page)
+    data = query_ranking(date, page)
+
     if not 'illusts' in data:
         return '数据获取失败'
     works = data['illusts']
-    pages = 10
-    current = page + 1
-    num = page * get_config('acggov', 'per_page') + 1
-    msg = ''
-    for i in works:
-        msg += f'{num}.' + i['title'] + \
-            '-' + str(i['id']) + '\n'
+    num = 30
+    if page % 3 != 0:
+        num = page % 3 * 10
+
+    msg = '======插画排行榜======' + '\n'
+
+    for i in range(num - 10, num):
+        msg += f'{(page * 10) - 9 + (i % 10)}.' + works[i]['title'] + ' - ' + works[i]['user']['name'] + ' - ' + str(
+            works[i]['id']) + '\n'
         num += 1
-    msg += f'第{current}页，共{str(pages)}页'
+    # msg += f'第{page}页，共{str(pages)}页'
     return msg
 
 
 # 获取排行榜图片
 async def acggov_get_ranking_setu(number: int) -> dict:
     image = await query_ranking_setu(number)
-
     path = f'setu_mix/acggov/{image["id"]}.jpg'
     res = R.img(path)
     if os.path.exists(res.path):
@@ -435,8 +444,8 @@ async def acggov_get_ranking_setu(number: int) -> dict:
         if get_config('acggov', 'pixiv_direct'):
             image['data'] = await download_pixiv_image(url, image['id'])
         else:
-            url = url.replace("https://i.pximg.net", "https://i.pixiv.cat")
-            image['data'] = await download_acggov_image(url)
+            url = url.replace("https://i.pximg.net", "https://i.acgmx.com")
+            image['data'] = download_acggov_image(url)
         image['native'] = False
         if not image['data']:
             image['id'] = 0
