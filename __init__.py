@@ -391,7 +391,6 @@ async def get_spec_setu(bot, ev):
         await bot.send(ev, '请在命令之后提供p站id哦~')
         return
     args = str(args)
-    print(args)
     msg = get_spec_image(args)
     if not msg:
         await bot.send(ev, f'没有在本地找到这张图片/不支持r18图片的提取\n原图地址:https://pixiv.lancercmd.cc/{args}')

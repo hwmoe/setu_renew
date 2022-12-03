@@ -28,7 +28,6 @@ check_path()
 
 
 def get_spec_image(ids: str):
-
     image = get_setu_native(uid=int(ids))
 
     if image is None or image['data'] is None:
@@ -61,7 +60,6 @@ def get_spec_image(ids: str):
 
 def format_setu_msg(image):
     try:
-        print(image)
         if image["title"]:
             try:
                 im = Image.open(io.BytesIO(image["data"]))

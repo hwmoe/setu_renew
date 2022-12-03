@@ -213,7 +213,10 @@ def get_setu_native(r18=0, uid=0):
 			return None
 
 		if uid == 0:
-			return None
+			fn = random.choice(os.listdir(res.path))
+			if fn.split('.')[0].isdigit():
+				uid = int(fn.split('.')[0])
+
 
 		if not uid:
 			return None

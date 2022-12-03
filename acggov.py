@@ -310,7 +310,7 @@ async def get_setu_online():
     return image
 
 
-def acggov_get_setu_native(uid: int | str):
+def acggov_get_setu_native(uid: int | str = 0):
     image = generate_image_struct()
 
     path = f'setu_mix/acggov'
@@ -319,7 +319,10 @@ def acggov_get_setu_native(uid: int | str):
         return None
 
     if uid == 0:
-        return None
+        fn = random.choice(os.listdir(res.path))
+        if fn.split('.')[0].isdigit():
+            uid = int(fn.split('.')[0])
+
 
     if not uid:
         return None
